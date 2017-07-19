@@ -1,54 +1,91 @@
 - name: Demystified - Using external materialized views in Red Hat JBoss Data Grid with Red Hat JBoss Data Virtualization
   hosts: localhost
   connection: local
-  tasks: 
-    - name: "Install JBoss Data Grid 6.6.0"
-      unarchive: 
-        src: binaries/jboss-datagrid-6.6.0-server.zip
+  tasks:
+    - name: "Install JBoss Data Grid {{ jdg_version }}"
+      unarchive:
+        src: binaries/jboss-datagrid-{{ jdg_version }}-server.zip
         dest: "{{ install_home }}"
-    - name: "Install Red Hat JBoss Data Grid 6.6.1 Server Update"
+
+    - name: Check if exists any JDG update
+      stat: path=binaries/jboss-jdg-{{ jdg_patch_version }}-patch.jar
+      register: jdg_update_file
+
+    - name: "Install Red Hat JBoss Data Grid {{ jdg_patch_version }} Server Update"
       shell: 'bash -c "{{ jdg_home }}/bin/cli.sh --file={{ cli_dir }}/patch_jdg.cli"'
-      ignore_errors: no
-    - name: "Install Red Hat JBoss Data Virtualization 6.3"
-      shell: 'bash -c "java -jar binaries/jboss-dv-6.3.0-1-installer.jar {{ xml_dir }}/dv63_install.xml"'
-      ignore_errors: no
-    - name: "Install Red Hat JBoss Data Virtualization Server 6.3.4 Update"
-      shell: 'bash -c "java -jar binaries/jboss-dv-6.3.4-patch.jar --server {{ jboss_home }} --update jboss-dv"'
-      ignore_errors: no
+      when: jdg_update_file.stat.exists == True
+
+    - name: "Install Red Hat JBoss Data Virtualization {{ jdv_version }}"
+      shell: 'bash -c "java -jar binaries/jboss-dv-{{ jdv_version }}-1-installer.jar {{ xml_dir }}/dv63_install.xml"'
+
+    - name: Check if exists any JDV update
+      stat: path=binaries/jboss-dv-{{ jdv_patch_version }}-patch.jar
+      register: jdv_update_file
+
+    - name: "Install Red Hat JBoss Data Virtualization Server {{ jdv_patch_version }} Update"
+      shell: 'bash -c "java -jar binaries/jboss-dv-{{ jdv_patch_version }}-patch.jar --server {{ jboss_home }} --update jboss-dv"'
+      when: jdv_update_file.stat.exists == True
+
     - name: "Create $JDV_HOME/teiidfiles/data to {{ jboss_home }}/teiidfiles/data"
       shell: 'bash -c "mkdir -p {{ jboss_home }}/teiidfiles/data"'
-      ignore_errors: no        
+
     - name: "Copy product data csv file $JDV_HOME//teiidfiles/data"
-      copy: 
+      copy:
         src: "files/csv/product-data.csv"
         dest: "{{ jboss_home }}/teiidfiles/data"
+
     - name: "Unzip Red Hat JBoss Data Grid Hot Rod Java Client Module"
-      unarchive: 
-        src: "binaries/jboss-datagrid-6.6.1-eap-modules-remote-java-client.zip"
+      unarchive:
+        src: "binaries/jboss-datagrid-{{ jdg_version }}-eap-modules-remote-java-client.zip"
         dest: "binaries/"
+
     - name: "Install the Red Hat JBoss Data Grid Hot Rod Java Client Module into the JDV server"
       copy:
-        src: "binaries/jboss-datagrid-6.6.1-eap-modules-remote-java-client/modules"
+        src: "binaries/jboss-datagrid-{{ jdg_version }}-eap-modules-remote-java-client/modules"
         dest: "{{ jboss_home }}"
-    - name: "Execute JDV Management CLI file(s)"
-      shell: 'bash -c "nohup {{ jboss_home }}/bin/standalone.sh -c {{ jboss_eap_instance_standalone_file }} -Djboss.socket.binding.port-offset={{ jboss_eap_instance_port_offset }} -Djboss.management.native.port={{ jboss_eap_instance_cli_default_port }} -Djboss.server.base.dir={{ jboss_eap_instance_dir }} --admin-only & " && sleep {{ cli_timeout }} && {{ jboss_home }}/bin/jboss-cli.sh -c --controller=127.0.0.1:{{ jboss_eap_instance_cli_port }} --file="{{ cli_dir }}/{{ item | basename }}" && pkill -TERM -f "java(.*){{ jboss_eap_instance_dir }}"'
+
+    - name: "Run JDV admin mode"
+      shell: '{{ jboss_home }}/bin/standalone.sh -c {{ jboss_eap_instance_standalone_file }} -Djboss.socket.binding.port-offset={{ jboss_eap_instance_port_offset }} -Djboss.management.native.port={{ jboss_eap_instance_cli_default_port }} -Djboss.server.base.dir={{ jboss_eap_instance_dir }} --admin-only &'
+
+    - name: "Apply JDV cli scripts"
+      shell: 'sleep {{ cli_timeout }} && {{ jboss_home }}/bin/jboss-cli.sh -c --controller=127.0.0.1:{{ jboss_eap_instance_cli_port }} --file="{{ cli_dir }}/{{ item | basename }}"'
       with_items: "{{ jdv_cli_list }}"
-      ignore_errors: no
-    - name: "Execute JDG Management CLI file(s)"
-      shell: 'bash -c "nohup {{ jdg_home }}/bin/standalone.sh -c {{ jdg_instance_standalone_file }} -Djboss.socket.binding.port-offset={{ jdg_instance_port_offset }} -Djboss.management.native.port={{ jdg_instance_cli_default_port }} -Djboss.server.base.dir={{ jdg_instance_dir }} --admin-only & " && sleep {{ cli_timeout }} && {{ jdg_home }}/bin/cli.sh --connect=127.0.0.1:{{ jdg_instance_cli_port }} --file="{{ cli_dir }}/{{ item | basename }}" && pkill -TERM -f "java(.*){{ jdg_instance_dir }}"'
+
+    - name: "Kill JDV instance"
+      shell: pkill -TERM -f "java(.*){{ jboss_eap_instance_dir }}"
+
+    # - name: "Execute JDV Management CLI file(s)"
+    #   shell: 'bash -c "nohup {{ jboss_home }}/bin/standalone.sh -c {{ jboss_eap_instance_standalone_file }} -Djboss.socket.binding.port-offset={{ jboss_eap_instance_port_offset }} -Djboss.management.native.port={{ jboss_eap_instance_cli_default_port }} -Djboss.server.base.dir={{ jboss_eap_instance_dir }} --admin-only & " && sleep {{ cli_timeout }} && {{ jboss_home }}/bin/jboss-cli.sh -c --controller=127.0.0.1:{{ jboss_eap_instance_cli_port }} --file="{{ cli_dir }}/{{ item | basename }}" && pkill -TERM -f "java(.*){{ jboss_eap_instance_dir }}"'
+    #   with_items: "{{ jdv_cli_list }}"
+    #   ignore_errors: yes
+
+    - name: "Run JDG admin mode"
+      shell: '{{ jdg_home }}/bin/standalone.sh -c {{ jdg_instance_standalone_file }} -Djboss.socket.binding.port-offset={{ jdg_instance_port_offset }} -Djboss.management.native.port={{ jdg_instance_cli_default_port }} -Djboss.server.base.dir={{ jdg_instance_dir }} --admin-only &'
+
+    - name: "Apply JDG cli scripts"
+    #   shell: 'sleep {{ cli_timeout }} && {{ jdg_home }}/bin/cli.sh -c --controller=127.0.0.1:{{ jdg_instance_cli_port }} --file="{{ cli_dir }}/{{ item | basename }}"'
+      shell: 'sleep {{ cli_timeout }} && {{ jdg_home }}/bin/cli.sh -c --controller=127.0.0.1:10090 --file="{{ cli_dir }}/{{ item | basename }}"'
       with_items: "{{ jdg_cli_list }}"
-      ignore_errors: no
+
+    - name: "Kill JDG instance"
+      shell: pkill -TERM -f "java(.*){{ jdg_instance_dir }}"
+
+    # - name: "Execute JDG Management CLI file(s)"
+    #   shell: 'bash -c "nohup {{ jdg_home }}/bin/standalone.sh -c {{ jdg_instance_standalone_file }} -Djboss.socket.binding.port-offset={{ jdg_instance_port_offset }} -Djboss.management.native.port={{ jdg_instance_cli_default_port }} -Djboss.server.base.dir={{ jdg_instance_dir }} --admin-only & " && sleep {{ cli_timeout }} && {{ jdg_home }}/bin/cli.sh --connect=127.0.0.1:{{ jdg_instance_cli_port }} --file="{{ cli_dir }}/{{ item | basename }}" && pkill -TERM -f "java(.*){{ jdg_instance_dir }}"'
+    #   with_items: "{{ jdg_cli_list }}"
+    #   ignore_errors: yes
+
     - name: "Unzip JDG Product schema Module in the JDV environment"
       unarchive:
         src: "binaries/Product_JDG_Module.zip"
         dest: "{{ jboss_home }}"
+
     - name: "Copy module.xml including module to Product POJO to JDG Resource Adapter"
       copy:
         src: "{{ xml_dir }}/module.xml"
         dest: "{{ jboss_home }}/modules/system/layers/dv/org/jboss/teiid/resource-adapter/infinispan/dsl/main"
+
     - name: "Copy ExtMatInJDG VDB to JDV deployments directory"
       copy:
         src: "{{ vdb_dir }}/ExtMatInJDG-vdb.xml"
         dest: "{{ jboss_home }}/standalone/deployments"
-
-

@@ -1,3 +1,10 @@
-/subsystem=infinispan/cache-container=local/local-cache=productCache:add(start=EAGER)
-/subsystem=infinispan/cache-container=local/local-cache=productAliasCache:add(start=EAGER)
-/subsystem=infinispan/cache-container=local/local-cache=productStagingCache:add(start=EAGER)
+batch
+/subsystem=datagrid-infinispan/cache-container=local/configurations=CONFIGURATIONS/local-cache-configuration=productCache:add()
+/subsystem=datagrid-infinispan/cache-container=local/configurations=CONFIGURATIONS/local-cache-configuration=productAliasCache:add()
+/subsystem=datagrid-infinispan/cache-container=local/configurations=CONFIGURATIONS/local-cache-configuration=productStagingCache:add()
+
+/subsystem=datagrid-infinispan/cache-container=local/local-cache=productCache:add(configuration=productCache)
+/subsystem=datagrid-infinispan/cache-container=local/local-cache=productAliasCache:add(configuration=productAliasCache)
+/subsystem=datagrid-infinispan/cache-container=local/local-cache=productStagingCache:add(configuration=productStagingCache)
+
+run-batch
